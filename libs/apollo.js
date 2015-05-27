@@ -1,6 +1,6 @@
 var cql = require("cassandra-driver"),
     types = cql.types,
-    SingleNodePolicy = require( __dirname + '/./single_node_policy'),
+    //SingleNodePolicy = require( __dirname + '/./single_node_policy'),
     async = require('async'),
     util = require("util"),
     BaseModel = require('./base_model'),
@@ -135,9 +135,11 @@ Apollo.prototype = {
     _set_client : function(client){
         var define_connection_options = lodash.clone(this._connection);
 
+        /* No valid point in using hardcoded load balancing policy
         define_connection_options.policies = {
             loadBalancing: new SingleNodePolicy()
         };
+        */
 
         //define_connection_options.hosts = define_connection_options.contactPoints;
 
