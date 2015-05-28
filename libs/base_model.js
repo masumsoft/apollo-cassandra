@@ -5,30 +5,6 @@ var util = require('util'),
     async = require('async'),
     lodash = require('lodash');
 
-/*
-Valid consistencies:
-any
-one
-two
-three
-quorum
-all
-localQuorum
-eachQuorum
-localOne */
-var CONSISTENCY_FIND   = 'quorum',
-    CONSISTENCY_SAVE   = 'quorum',
-    CONSISTENCY_DEFINE = 'all',
-    CONSISTENCY_DELETE = 'quorum',
-    CONSISTENCY_DEFAULT = 'quorum';
-
-/**
- * Consistency levels
- * @typedef {Object} BaseModel~cql_consistencies
- * @readonly
- * @enum {number}
- */
-var cql_consistencies = cql.types.consistencies;
 
 var TYPE_MAP = require('./cassandra_types');
 var check_db_tablename = function (obj){
@@ -191,35 +167,32 @@ BaseModel._ensure_connected = function(callback){
  * Execute a query on a defined connection which always remain the same
  * @param  {string}                         query       Query to execute
  * @param  {object}                         options     Options for the query
- * @param  {BaseModel~cql_consistencies}    consistency Consistency type
  * @param  {BaseModel~GenericCallback}      callback    callback of the execution
  * @protected
  * @static
  */
-BaseModel._execute_definition_query = function(query, params, consistency, callback){
+BaseModel._execute_definition_query = function(query, params, callback){
     this._ensure_connected(function(err){
         if(err){
             return callback(err);
         }
         var properties = this._properties,
             conn = properties.define_connection;
-        conn.execute(query, params, {'prepare': false, 'consistency': consistency, 'fetchSize': 0}, callback);
+        conn.execute(query, params, {'prepare': false, 'fetchSize': 0}, callback);
     }.bind(this));
 };
 
 /**
  * Execute queries in batch on A connection
  * @param  {object[]}   queries     query, params object
- * @param  {BaseModel~cql_consistencies}   consistency Consistency type
  * @param  {BaseModel~GenericCallback}      callback    callback of the execution
  * @protected
  * @static
  */
-BaseModel._execute_batch = function(queries, consistency, callback){
+BaseModel._execute_batch = function(queries, callback){
     this._ensure_connected(function(err){
         if(err) return callback(err);
-        consistency = (typeof consistency == 'string' ? cql_consistencies[consistency] : consistency);
-        this._properties.cql.batch(queries, {'consistency': consistency} , callback);
+        this._properties.cql.batch(queries, {'prepare': true} , callback);
     }.bind(this));
 };
 
@@ -234,10 +207,8 @@ BaseModel._create_table = function(callback){
     var properties = this._properties,
         table_name = properties.table_name,
         model_schema = properties.schema,
-        mismatch_behaviour = properties.mismatch_behaviour,
+        dropTableOnSchemaChange = properties.dropTableOnSchemaChange,
         cql = properties.cql;
-
-    var consistency = cql_consistencies[CONSISTENCY_DEFINE];
 
     //check for existence of table on DB and if it matches this model's schema
     this._get_db_table_schema(function(err,db_schema){
@@ -249,7 +220,7 @@ BaseModel._create_table = function(callback){
             //index creation
             if(model_schema.indexes instanceof Array){
                 async.eachSeries(model_schema.indexes, function(idx,next){
-                    this._execute_definition_query(this._create_index_query(table_name,idx), [], consistency, function(err, result){
+                    this._execute_definition_query(this._create_index_query(table_name,idx), [], function(err, result){
                         if (err) next(build_error('model.tablecreation.dbindex', err));
                         else
                             next(null,result);
@@ -261,17 +232,16 @@ BaseModel._create_table = function(callback){
 
         }.bind(this);
 
-
         if (db_schema){// check if schemas match
             var normalized_model_schema = schemer.normalize_model_schema(model_schema),
                 normalized_db_schema = schemer.normalize_model_schema(db_schema);
 
             if (!lodash.isEqual(normalized_model_schema, normalized_db_schema)){
-                if(mismatch_behaviour === 'drop'){
+                if(dropTableOnSchemaChange){
                     this.drop_table(function(err,result){
                         if (err) return callback(build_error('model.tablecreation.dbcreate', err));
                         var  create_query = this._create_table_query(table_name,model_schema);
-                        this._execute_definition_query(create_query, [], consistency, after_dbcreate);
+                        this._execute_definition_query(create_query, [], after_dbcreate);
 
                     }.bind(this));
                 } else{
@@ -282,7 +252,7 @@ BaseModel._create_table = function(callback){
         }
         else{  // if not existing, it's created anew
             var  create_query = this._create_table_query(table_name,model_schema);
-            this._execute_definition_query(create_query, [], consistency, after_dbcreate);
+            this._execute_definition_query(create_query, [], after_dbcreate);
         }
     }.bind(this));
 };
@@ -352,7 +322,7 @@ BaseModel._get_db_table_schema = function (callback){
 
     var query = "SELECT * FROM system.schema_columns WHERE columnfamily_name = ? AND keyspace_name = ? ALLOW FILTERING;";
 
-    this.execute_query(query,[table_name,keyspace], null, function(err, result) {
+    this.execute_query(query,[table_name,keyspace], function(err, result) {
         if (err) return callback(build_error('model.tablecreation.dbschemaquery', err));
 
         if(!result.rows || result.rows.length === 0)
@@ -388,15 +358,14 @@ BaseModel._get_db_table_schema = function (callback){
 /**
  * Execute a query which involves the model table
  * @param  {string}   query     The query to execute
- * @param  {BaseModel~cql_consistencies}   consistency Consistency type
  * @param  {BaseModel~QueryExecution} callback  Callback with err and result
  * @protected
  */
 //BaseModel._execute_table_query = BaseModel._execute_definition_query;
-BaseModel._execute_table_query = function(query, params, consistency, callback){
+BaseModel._execute_table_query = function(query, params, callback){
 
     var do_execute_query = function(doquery,docallback){
-        this.execute_query(doquery, params, consistency, docallback);
+        this.execute_query(doquery, params, docallback);
     }.bind(this,query);
 
     if(this.is_table_ready()){
@@ -598,7 +567,7 @@ BaseModel.is_table_ready = function(){
 };
 
 /**
- * Initialize data related to this model
+ * Initialize model
  * @param  {object}   options  Options
  * @param  {BaseModel~QueryExecution} callback Called on init end
  */
@@ -608,51 +577,43 @@ BaseModel.init = function(options, callback){
         options = undefined;
     }
 
+    this._ready = true;
+    callback();
+};
+
+/**
+ * Sync model definitions with cassandra table
+ */
+BaseModel.syncDefinition = function(callback) {
+    var self = this;
+
     var after_create = function(err, result){
-        if(!err)
+        if(err) callback(err);
+        else {
             this._ready = true;
-        callback(err,result);
+            callback(null, result);
+        }
     }.bind(this);
 
-    if(options && options.drop === true){
-        this.drop_table(function(err){
-            if(err) {return callback(build_error('model.tablecreation.dbdrop',err));}
-            this._create_table(after_create);
-        });
-    }
-    else {
-        this._create_table(after_create);
-    }
+    this._create_table(after_create);
 };
 
 /**
  * Execute a generic query
  * @param  {string}                         query - Query to execute
- * @param  {BaseModel~cql_consistencies}    consistency - Consistency type
  * @param  {BaseModel~QueryExecution}       callback - Called on execution end
  */
-BaseModel.execute_query = function(query, params, consistency, callback){
+BaseModel.execute_query = function(query, params, callback){
     this._ensure_connected(function(err){
         if(err) return callback(err);
-        consistency = (typeof consistency == 'string' ? cql_consistencies[consistency] : consistency);
-        this._properties.cql.execute(query, params, {'prepare': false, 'consistency': consistency, 'fetchSize': 0}, function(err, result){
+        this._properties.cql.execute(query, params, {'prepare': true}, function(err, result){
             if(err && err.code == 8704){
-                this._execute_definition_query(query, params, consistency, callback);
+                this._execute_definition_query(query, params, callback);
             }else{
                 callback(err, result);
             }
         }.bind(this));
     }.bind(this));
-};
-
-/**
- * Execute a generic query
- * @param  {string}                         query - Query to execute
- * @param  {BaseModel~cql_consistencies}    consistency - Consistency type
- * @param  {BaseModel~QueryExecution}       callback - Called on execution end
- */
-BaseModel.execute_prepared_query = function(query, consistency, callback){
-    this._properties.cql.execute(query, cql_consistencies[consistency], callback);
 };
 
 
@@ -671,8 +632,7 @@ BaseModel.find = function(query_ob, options, callback){
         throw 'Callback needed!';
 
     var defaults = {
-        raw : false,
-        consistency : CONSISTENCY_FIND
+        raw : false
     };
 
     options = lodash.defaults(options, defaults);
@@ -684,7 +644,7 @@ BaseModel.find = function(query_ob, options, callback){
     catch(e){
         return callback(e);
     }
-    this._execute_table_query(query, null, options.consistency, function(err,results){
+    this._execute_table_query(query, null, function(err,results){
         if(err) return callback(build_error('model.find.dberror',err));
         if(!options.raw){
             var ModelConstructor = this._properties.get_constructor();
@@ -719,7 +679,7 @@ BaseModel.delete = function(query_ob, options, callback){
         throw 'Callback needed!';
 
     var defaults = {
-        consistency : CONSISTENCY_DELETE
+        
     };
 
     options = lodash.defaults(options, defaults);
@@ -733,7 +693,7 @@ BaseModel.delete = function(query_ob, options, callback){
         return callback(e);
     }
     query = util.format(query, this._properties.table_name, where);
-    this._execute_table_query(query, null, options.consistency, function(err,results){
+    this._execute_table_query(query, null, function(err,results){
         if(err) return callback(build_error('model.delete.dberror',err));
         callback(null, results);
     });
@@ -751,7 +711,7 @@ BaseModel.drop_table = function(callback){
         cql = properties.cql;
 
     var query = util.format('DROP TABLE IF EXISTS "%s";', table_name);
-    this._execute_definition_query(query,[],cql_consistencies[CONSISTENCY_DEFINE],callback);
+    this._execute_definition_query(query,[],callback);
 };
 
 
@@ -847,7 +807,7 @@ BaseModel.prototype.save = function(options, callback){
         properties = this.constructor._properties,
         schema = properties.schema,
         defaults = {
-            consistency : CONSISTENCY_SAVE
+            
         };
 
     options = lodash.defaults(options, defaults);
@@ -895,7 +855,7 @@ BaseModel.prototype.save = function(options, callback){
         identifiers.join(" , "),
         values.join(" , ")
     );
-    this.constructor._execute_table_query(query, null,options.consistency, function(err, result){
+    this.constructor._execute_table_query(query, null, function(err, result){
         if(err) return callback(err);
         this._update_self(function(err){
             if(err)
@@ -950,17 +910,14 @@ module.exports = BaseModel;
 * Options for find operation
 * @typedef {Object} BaseModel~find_options
 * @property {boolean} [raw=false] - Returns raw result instead of instances of your model
-* @property {string} [consistency=CONSISTENCY_FIND] - Define consistency for this operation
 */
 
 /**
 * Options for delete operation
 * @typedef {Object} BaseModel~delete_options
-* @property {string} [consistency=CONSISTENCY_DELETE] - Define consistency for this operation
 */
 
 /**
 * Options for save operation
 * @typedef {Object} BaseModel~save_options
-* @property {string} [consistency=CONSISTENCY_SAVE] - Define consistency for this operation
 */

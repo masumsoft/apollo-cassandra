@@ -19,7 +19,7 @@
   },
   "dependencies": {
     "async": "^0.9.0",
-    "cassandra-driver": "^2.0.0",
+    "cassandra-driver": "^2.1.0",
     "check-types": "^1.4.0",
     "lodash": "^2.4.1"
   },
@@ -40,7 +40,9 @@
     "javascript",
     "js"
   ],
-  "author": "3logic",
+  "author": {
+    "name": "3logic"
+  },
   "license": "LGPL-3.0",
   "bugs": {
     "url": "https://github.com/3logic/apollo-cassandra/issues"
@@ -48,5 +50,35 @@
   "homepage": "https://github.com/3logic/apollo-cassandra",
   "publishConfig": {
     "registry": "http://registry.npmjs.org/"
-  }
+  },
+  "gitHead": "0b4bcf0c49abebc9d2f1d17c580e32fa4796817b",
+  "_id": "apollo-cassandra@1.0.5",
+  "_shasum": "3555fa40fb192144820dba9c108fb743c435e214",
+  "_from": "apollo-cassandra@^1.0.5",
+  "_npmVersion": "1.4.14",
+  "_npmUser": {
+    "name": "ecogodi",
+    "email": "elia.cogodi@gmail.com"
+  },
+  "maintainers": [
+    {
+      "name": "ramiel",
+      "email": "devel@3logic.it"
+    },
+    {
+      "name": "3logic",
+      "email": "devel@3logic.it"
+    },
+    {
+      "name": "ecogodi",
+      "email": "elia.cogodi@gmail.com"
+    }
+  ],
+  "dist": {
+    "shasum": "3555fa40fb192144820dba9c108fb743c435e214",
+    "tarball": "http://registry.npmjs.org/apollo-cassandra/-/apollo-cassandra-1.0.5.tgz"
+  },
+  "directories": {},
+  "_resolved": "https://registry.npmjs.org/apollo-cassandra/-/apollo-cassandra-1.0.5.tgz",
+  "readme": "ERROR: No README data found!"
 }

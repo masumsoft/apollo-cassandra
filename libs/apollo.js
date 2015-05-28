@@ -1,6 +1,5 @@
 var cql = require("cassandra-driver"),
     types = cql.types,
-    //SingleNodePolicy = require( __dirname + '/./single_node_policy'),
     async = require('async'),
     util = require("util"),
     BaseModel = require('./base_model'),
@@ -20,15 +19,18 @@ var noop = function(){};
 var Apollo = function(connection, options){
     if(!connection) throw "Data connection configuration undefined";
     options = options || {};
-    this._options = lodash.defaults(options, {
-        replication_strategy : {'class' : 'SimpleStrategy', 'replication_factor' : DEFAULT_REPLICATION_FACTOR }
-    });
+
+    if(!options.defaultReplicationStrategy) {
+        options.defaultReplicationStrategy = {
+            'class' : 'SimpleStrategy',
+            'replication_factor' : DEFAULT_REPLICATION_FACTOR
+        };
+    }
+
+    this._options = options;
     this._models = {};
     this._keyspace = connection.keyspace;
     this._connection = connection;
-    //Compatibility with old parameters name
-    if(this._connection.hosts && !this._connection.contactPoints)
-        this._connection.contactPoints = this._connection.hosts;
     this._client = null;
 };
 
@@ -41,7 +43,7 @@ Apollo.prototype = {
      * @return {Model}            Construcotr for the model
      * @private
      */
-    _generate_model : function(properties){
+    _generate_model : function(properties, callback){
 
         /**
          * Create a new instance for the model
@@ -63,6 +65,10 @@ Apollo.prototype = {
         }
 
         Model._set_properties(properties);
+        Model.syncDefinition(function(err, result){
+            if(err) callback(err);
+            else callback(null, result);
+        });
 
         return Model;
     },
@@ -113,7 +119,7 @@ Apollo.prototype = {
             replication_text = '',
             options = this._options;
 
-        replication_text = this._generate_replication_text(options.replication_strategy);
+        replication_text = this._generate_replication_text(options.defaultReplicationStrategy);
 
         var query = util.format(
             "CREATE KEYSPACE IF NOT EXISTS %s WITH REPLICATION = %s;",
@@ -135,7 +141,7 @@ Apollo.prototype = {
     _set_client : function(client){
         var define_connection_options = lodash.clone(this._connection);
 
-        /* No valid point in using hardcoded load balancing policy
+        /*
         define_connection_options.policies = {
             loadBalancing: new SingleNodePolicy()
         };
@@ -199,33 +205,26 @@ Apollo.prototype = {
      * Create a model based on proposed schema
      * @param {string}  model_name - Name for the model
      * @param {object}  model_schema - Schema for the model
-     * @param {Apollo~ModelCreationOptions} options - Options for the creation
      * @return {Model} Model constructor
      */
-    add_model : function(model_name, model_schema, options) {
+    add_model : function(model_name, model_schema, callback) {
         if(!model_name || typeof(model_name) != "string")
-            throw("Si deve specificare un nome per il modello");
+            throw("Model name must be a valid string");
 
-        options = options || {};
-        options.mismatch_behaviour = options.mismatch_behaviour || 'fail';
-        if(options.mismatch_behaviour !== 'fail' && options.mismatch_behaviour !== 'drop')
-            throw 'Valid option values for "mismatch_behaviour": "fail" , "drop". Got: "'+options.mismatch_behaviour+'"';
-
-        //model_schema = schemer.normalize_model_schema(model_schema);
         schemer.validate_model_schema(model_schema);
 
         var base_properties = {
             name : model_name,
             schema : model_schema,
             keyspace : this._keyspace,
-            mismatch_behaviour : options.mismatch_behaviour,
             define_connection : this._define_connection,
             cql : this._client,
             get_constructor : this.get_model.bind(this,model_name),
-            connect: this.connect.bind(this)
+            connect: this.connect.bind(this),
+            dropTableOnSchemaChange: this._options.dropTableOnSchemaChange
         };
 
-        return (this._models[model_name] = this._generate_model(base_properties));
+        return (this._models[model_name] = this._generate_model(base_properties, callback));
     },
 
     /**
