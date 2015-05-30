@@ -196,6 +196,10 @@ BaseModel._execute_batch = function(queries, callback){
     }.bind(this));
 };
 
+BaseModel.execute_batch = function(queries, callback){
+    this._execute_batch(queries, callback);
+};
+
 
 /**
  * Create table on cassandra for this model
