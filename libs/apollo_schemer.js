@@ -39,6 +39,10 @@ var schemer = {
                     output_schema.fields[k] = {'type':output_schema.fields[k].type};
                 }
             }
+
+            if(output_schema.fields[k] && output_schema.fields[k].type == 'varchar') {
+                output_schema.fields[k].type = 'text';
+            }
         }
 
         if(typeof output_schema.key[0] === 'string'){
