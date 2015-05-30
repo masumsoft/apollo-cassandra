@@ -320,7 +320,7 @@ BaseModel._get_db_table_schema = function (callback){
     var table_name = this._properties.table_name,
         keyspace = this._properties.keyspace;
 
-    var query = "SELECT * FROM system.schema_columns WHERE columnfamily_name = ? AND keyspace_name = ? ALLOW FILTERING;";
+    var query = "SELECT * FROM system.schema_columns WHERE columnfamily_name = ? AND keyspace_name = ?;";
 
     this.execute_query(query,[table_name,keyspace], function(err, result) {
         if (err) return callback(build_error('model.tablecreation.dbschemaquery', err));
@@ -535,16 +535,18 @@ BaseModel._create_find_query = function(query_ob, options){
     }
     var where = this._create_where_clause(query_ob);
     var query = util.format(
-        'SELECT * FROM "%s" %s %s %s ALLOW FILTERING;',
+        'SELECT * FROM "%s" %s %s %s',
         this._properties.table_name,
         where,
         order_keys.length ? 'ORDER BY '+ order_keys.join(', '):' ',
         limit ? 'LIMIT '+limit : ' '
     );
+
+    if(options.allow_filtering) query += ' ALLOW FILTERING;';
+    else query += ';'
+
     return query;
 };
-
-
 
 
 /* Static Public ---------------------------------------- */
@@ -665,6 +667,62 @@ BaseModel.find = function(query_ob, options, callback){
 };
 
 /**
+ * Update entry on database
+ * @param  {object}                     query_ob - The query object for update
+ * @param {object}                      update_values - The column values to be updated
+ * @param  {BaseModel~update_options}   [options] - Option for this update query
+ * @param  {BaseModel~GenericCallback}  callback - Data retrieved
+ */
+BaseModel.update = function(query_ob, update_values, options, callback){
+    if(arguments.length == 3){
+        callback = options;
+        options = {};
+    }
+    if(!callback)
+        throw 'Callback needed!';
+
+    var defaults = {
+
+    };
+
+    options = lodash.defaults(options, defaults);
+
+    var update_clause_array = [];
+    for(var key in update_values) {
+        update_clause_array.push(key + "=" + this._get_db_value_expression(key,update_values[key]));
+    }
+
+    var query = 'UPDATE "%s"',
+        where = '';
+    if(options.ttl) query += ' USING TTL ' + options.ttl;
+    query += ' SET %s %s';
+    try{
+        where = this._create_where_clause(query_ob);
+    }
+    catch(e){
+        return callback(e);
+    }
+    query = util.format(query, this._properties.table_name, update_clause_array.join(', '), where);
+
+    if(options.conditions) {
+        var update_conditions_array = [];
+        for(var key in options.conditions) {
+            update_conditions_array.push(key + "=" + this._get_db_value_expression(key,options.conditions[key]));
+        }
+        query += ' IF ' + update_conditions_array.join(' AND ');
+    }
+    if(options.if_exists) query += ' IF EXISTS';
+
+    query += ';';
+
+    this._execute_table_query(query, null, function(err,results){
+        if(err) return callback(build_error('model.delete.dberror',err));
+        callback(null, results);
+    });
+
+};
+
+/**
  * Delete entry on database
  * @param  {object}                     query_ob - The query object for deletion
  * @param  {BaseModel~delete_options}   [options] - Option for this delete query
@@ -687,7 +745,7 @@ BaseModel.delete = function(query_ob, options, callback){
     var query = 'DELETE FROM "%s" %s;',
         where = '';
     try{
-        where = this._create_where_clause(query_ob, options);
+        where = this._create_where_clause(query_ob);
     }
     catch(e){
         return callback(e);
@@ -855,6 +913,12 @@ BaseModel.prototype.save = function(options, callback){
         identifiers.join(" , "),
         values.join(" , ")
     );
+
+    if(options.if_not_exist) query += " IF NOT EXISTS";
+    if(options.ttl) query += " USING TTL " + options.ttl;
+
+    query += ";";
+
     this.constructor._execute_table_query(query, null, function(err, result){
         if(err) return callback(err);
         this._update_self(function(err){
