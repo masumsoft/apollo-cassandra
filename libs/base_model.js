@@ -660,7 +660,7 @@ BaseModel.find = function(query_ob, options, callback){
             });
             callback(null,results);
         }else{
-           results = results.rows.map(function(res){
+            results = results.rows.map(function(res){
                 delete(res.columns);
                 return res;
             });

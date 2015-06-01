@@ -4,6 +4,10 @@ var check = require('check-types'),
 
 var validators = {};
 
+validators.is_long = function (obj){
+    return isNaN(obj) === false;
+};
+
 validators.is_integer = function (obj){
     return check.intNumber(obj);
 };
@@ -51,10 +55,10 @@ var TYPE_MAP = {};
 
 TYPE_MAP = {
     "ascii"     : {validator : validators.is_string,   dbvalidator : "org.apache.cassandra.db.marshal.AsciiType"},
-    "bigint"    : {validator : validators.is_integer,  dbvalidator : "org.apache.cassandra.db.marshal.LongType"},
+    "bigint"    : {validator : validators.is_long,     dbvalidator : "org.apache.cassandra.db.marshal.LongType"},
     "blob"      : {validator : validators.is_anything, dbvalidator : "org.apache.cassandra.db.marshal.BytesType"},
     "boolean"   : {validator : validators.is_boolean,  dbvalidator : "org.apache.cassandra.db.marshal.BooleanType"},
-    "counter"   : {validator : validators.is_integer,  dbvalidator : "org.apache.cassandra.db.marshal.CounterColumnType"},
+    "counter"   : {validator : validators.is_long,     dbvalidator : "org.apache.cassandra.db.marshal.CounterColumnType"},
     "decimal"   : {validator : validators.is_number,   dbvalidator : "org.apache.cassandra.db.marshal.DecimalType"},
     "double"    : {validator : validators.is_number,   dbvalidator : "org.apache.cassandra.db.marshal.DoubleType"},
     "float"     : {validator : validators.is_number,   dbvalidator : "org.apache.cassandra.db.marshal.FloatType"},
