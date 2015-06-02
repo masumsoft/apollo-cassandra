@@ -538,8 +538,15 @@ BaseModel._create_find_query = function(query_ob, options){
         }
     }
     var where = this._create_where_clause(query_ob);
+
+    var select = ['*'];
+    if(options.select && lodash.isArray(options.select)) {
+        select = options.select;
+    }
+
     var query = util.format(
-        'SELECT * FROM "%s" %s %s %s',
+        'SELECT %s FROM "%s" %s %s %s',
+        select,
         this._properties.table_name,
         where,
         order_keys.length ? 'ORDER BY '+ order_keys.join(', '):' ',
