@@ -219,6 +219,21 @@ BaseModel._create_table = function(callback){
 
         if(err) return callback(err);
 
+        var after_dbindex = function(err, result){
+            if (err) return callback(build_error('model.tablecreation.dbindex', err));
+            //custom index creation
+            if(model_schema.custom_index){
+                this._execute_definition_query(this._create_custom_index_query(table_name, model_schema.custom_index), [], function(err, result){
+                    if (err) callback(build_error('model.tablecreation.dbindex', err));
+                    else
+                        callback(null,result);
+                });
+            }
+            else
+                callback();
+
+        }.bind(this);
+
         var after_dbcreate = function(err, result){
             if (err) return callback(build_error('model.tablecreation.dbcreate', err));
             //index creation
@@ -229,10 +244,10 @@ BaseModel._create_table = function(callback){
                         else
                             next(null,result);
                     });
-                }.bind(this),callback);
+                }.bind(this),after_dbindex);
             }
             else
-                callback();
+                after_dbindex();
 
         }.bind(this);
 
@@ -299,7 +314,7 @@ BaseModel._create_table_query = function(table_name,schema){
 
 
 /**
- * Create the qery to generate table index
+ * Create the query to generate table index
  * @param  {string} table_name Name of the table
  * @param  {string} index_name Name of the field to index
  * @return {string}            The index creation query
@@ -311,6 +326,35 @@ BaseModel._create_index_query = function(table_name, index_name){
         table_name,
         index_name
     );
+    return query;
+};
+
+
+/**
+ * Create the query to generate custom table index
+ * @param  {string} table_name Name of the table
+ * @param  {Object} custom_index custom index object
+ * @return {string} The index creation query
+ * @protected
+ */
+BaseModel._create_custom_index_query = function(table_name, custom_index){
+    var query = util.format(
+        "CREATE CUSTOM INDEX IF NOT EXISTS ON %s (%s) USING '%s'",
+        table_name,
+        custom_index.on,
+        custom_index.using
+    );
+    if(custom_index.options) {
+        query += " WITH OPTIONS = {";
+        for(var key in custom_index.options) {
+            query += "'"+key+"': '"+custom_index.options[key]+"', ";
+        }
+        query = query.slice(0,-2);
+        query += "}";
+    }
+
+    query += ";";
+
     return query;
 };
 
@@ -347,9 +391,22 @@ BaseModel._get_db_table_schema = function (callback){
                 db_schema.key[row.component_index+1] = row.column_name;
             }
             if(row.index_name){
-                if(!db_schema.indexes)
-                    db_schema.indexes = [];
-                db_schema.indexes.push(row.column_name);
+                if(row.index_type == 'CUSTOM') {
+                    var index_options = JSON.parse(row.index_options);
+                    var using = index_options.class_name;
+                    delete index_options.class_name;
+
+                    db_schema.custom_index = {
+                        on: row.column_name,
+                        using: using,
+                        options: index_options
+                    };
+                }
+                else {
+                    if(!db_schema.indexes)
+                        db_schema.indexes = [];
+                    db_schema.indexes.push(row.column_name);
+                }
             }
         }
 

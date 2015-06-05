@@ -18,7 +18,7 @@ var schemer = {
 
     normalize_model_schema: function(model_schema){
         var output_schema = lodash.clone(model_schema,true);
-        var good_fields = {fields : true, key:true, indexes:true};
+        var good_fields = {fields : true, key:true, indexes:true, custom_index: true};
 
         for(var k in output_schema){
             if(!(k in good_fields))
@@ -113,6 +113,19 @@ var schemer = {
                     throw("Indexes must be an array of column name strings");
                 if( model_schema.fields[model_schema.indexes[l]].virtual )
                     throw("Indexes must be an array of db column names, can't contain virtual field names");
+            }
+        }
+
+        if(model_schema.custom_index){
+            if((typeof(model_schema.custom_index.on) != "string") || !(model_schema.custom_index.on in model_schema.fields))
+                throw("Custom Index must be a string with a valid column name");
+            if(model_schema.fields[model_schema.custom_index.on].virtual)
+                throw("Custom Index must be a db column name, can't contain virtual field name");
+            if(typeof(model_schema.custom_index.using) != "string") {
+                throw("Custom Index must have a 'using' attribute with string value");
+            }
+            if(!model_schema.custom_index.options) {
+                throw("Custom Index options cannot be undefined");
             }
         }
     },
